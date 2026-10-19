@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment secrets (never commit)
+.env
+.env.*
+!.env.example
+*.env.local
+*.env.production
+
+# Uploads (user content, not source)
+uploads/
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Playwright and other test-run output
+test-results/
+playwright-report/
+
+# MongoDB local replica-set data (dev-only, auto-generated)
+mongo-rs/data/
+mongo-rs/log/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
