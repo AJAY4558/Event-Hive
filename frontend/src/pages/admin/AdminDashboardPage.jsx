@@ -37,7 +37,7 @@ export default function AdminDashboardPage() {
       const [overviewResponse, userResponse, eventResponse, auditResponse] = await Promise.all([
         api.get('/admin/overview'),
         api.get('/admin/users', { params: { limit: 100, search: search || undefined } }),
-        api.get('/events/organizer', { params: { limit: 100 } }),
+        api.get('/events/organizer', { params: { limit: 50 } }),
         api.get('/admin/audit-logs', { params: { limit: 50 } }),
       ]);
       setOverview(overviewResponse.data);

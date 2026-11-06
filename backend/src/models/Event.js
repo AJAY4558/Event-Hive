@@ -35,6 +35,15 @@ const sectionSchema = new Schema(
   { _id: false }
 );
 
+const imageUploadSchema = new Schema({
+  url: { type: String, required: true, maxlength: 2048 },
+  storageKey: { type: String, required: true, maxlength: 256 },
+  originalName: { type: String, required: true, maxlength: 255 },
+  mimeType: { type: String, enum: ['image/jpeg', 'image/png', 'image/webp'], required: true },
+  size: { type: Number, required: true, min: 1 },
+  uploadedAt: { type: Date, required: true },
+}, { _id: false });
+
 const performanceSchema = new Schema(
   {
     label: { type: String, trim: true, maxlength: 100, default: 'Performance' },
@@ -86,6 +95,8 @@ const eventSchema = new Schema(
     ageRating: { type: String, trim: true, maxlength: 20 },
     posterUrl: { type: String, trim: true, maxlength: 500 },
     bannerUrl: { type: String, trim: true, maxlength: 500 },
+    posterUpload: { type: imageUploadSchema, default: undefined },
+    bannerUpload: { type: imageUploadSchema, default: undefined },
     status: { type: String, enum: ['draft', 'published', 'cancelled'], default: 'draft', index: true },
     publishedAt: { type: Date },
     performances: { type: [performanceSchema], default: [] },

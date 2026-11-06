@@ -58,11 +58,17 @@ async function bootstrap() {
   });
 
   // 5. Start listening
-  httpServer.listen(env.PORT, () => {
+  const onListening = () => {
     console.log(`\n🚀 EventHive backend running on http://localhost:${env.PORT}`);
     console.log(`   Health: http://localhost:${env.PORT}/health`);
     console.log(`   Env:    ${env.NODE_ENV}\n`);
-  });
+  };
+
+  if (env.NODE_ENV === 'production') {
+    httpServer.listen(env.PORT, '0.0.0.0', onListening);
+  } else {
+    httpServer.listen(env.PORT, onListening);
+  }
 
   // 6. Graceful shutdown
   const shutdown = (signal) => {

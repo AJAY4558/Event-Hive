@@ -8,10 +8,25 @@ const EVENT_CATEGORIES = [
 ];
 
 const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid ID');
+const imageStorageKey = z.string().regex(
+  /^organizers\/[a-f\d]{24}\/[a-f\d-]{36}\.(jpg|jpeg|png|webp)$/i,
+  'Invalid uploaded image reference'
+);
+const uploadedImage = z.object({
+  url: z.string().trim().max(2048).refine((value) =>
+    /^\/uploads\/organizers\/[a-f\d]{24}\/[a-f\d-]{36}\.(jpg|jpeg|png|webp)$/i.test(value) ||
+    /^https?:\/\//i.test(value), 'Invalid uploaded image URL'),
+  storageKey: imageStorageKey,
+  originalName: z.string().trim().min(1).max(255),
+  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+  size: z.number().int().positive().max(50 * 1024 * 1024),
+  uploadedAt: z.coerce.date(),
+});
 const optionalUrl = z
   .string()
   .trim()
   .max(500)
+  .nullable()
   .optional()
   .refine((value) => !value || /^https?:\/\//i.test(value), 'Enter a valid http or https URL');
 
@@ -23,6 +38,8 @@ const eventDetails = z.object({
   ageRating: z.string().trim().max(20).optional(),
   posterUrl: optionalUrl,
   bannerUrl: optionalUrl,
+  posterUpload: uploadedImage.nullable().optional(),
+  bannerUpload: uploadedImage.nullable().optional(),
 });
 const eventUpdate = eventDetails.partial().refine((data) => Object.keys(data).length > 0, 'Provide at least one field to update');
 

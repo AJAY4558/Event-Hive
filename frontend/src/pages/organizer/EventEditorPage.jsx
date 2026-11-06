@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CalendarDays, CircleAlert, Loader2, MapPin, Plus, Save, Send, Trash2 } from 'lucide-react';
 import { api } from '@/api/client';
+import ImageUploadField from '@/components/organizer/ImageUploadField';
 
 const CATEGORIES = [
   ['movie', 'Cinema'], ['concert', 'Concert'], ['comedy', 'Comedy'], ['theatre', 'Theatre'],
@@ -39,6 +40,9 @@ export default function EventEditorPage() {
   const [eventData, setEventData] = useState(null);
   const [venues, setVenues] = useState([]);
   const [eventForm, setEventForm] = useState(EMPTY_EVENT);
+  const [posterUpload, setPosterUpload] = useState(null);
+  const [bannerUpload, setBannerUpload] = useState(null);
+  const [imageUploading, setImageUploading] = useState({ poster: false, banner: false });
   const [performanceForm, setPerformanceForm] = useState(EMPTY_PERFORMANCE);
   const [editingPerformanceId, setEditingPerformanceId] = useState(null);
   const [priceTiers, setPriceTiers] = useState({});
@@ -68,6 +72,8 @@ export default function EventEditorPage() {
           posterUrl: loadedEvent.posterUrl || '',
           bannerUrl: loadedEvent.bannerUrl || '',
         });
+        setPosterUpload(loadedEvent.posterUpload || null);
+        setBannerUpload(loadedEvent.bannerUpload || null);
       }
       setPhase('ready');
     }).catch((loadError) => {
@@ -104,8 +110,10 @@ export default function EventEditorPage() {
         category: eventForm.category,
         tags: eventForm.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
         ageRating: eventForm.ageRating.trim() || undefined,
-        posterUrl: eventForm.posterUrl.trim() || undefined,
-        bannerUrl: eventForm.bannerUrl.trim() || undefined,
+        posterUrl: eventForm.posterUrl.trim() || null,
+        bannerUrl: eventForm.bannerUrl.trim() || null,
+        posterUpload: posterUpload || null,
+        bannerUpload: bannerUpload || null,
       };
       if (isNew) {
         const response = await api.post('/events', payload);
@@ -263,8 +271,30 @@ export default function EventEditorPage() {
             <label className="sm:col-span-2"><span className="mb-1.5 block text-xs font-medium text-gray-400">Tags (comma separated)</span><input value={eventForm.tags} onChange={(event) => setEventField('tags', event.target.value)} className="input" placeholder="live music, indie, evening" /></label>
             <label><span className="mb-1.5 block text-xs font-medium text-gray-400">Poster image URL (optional)</span><input type="url" value={eventForm.posterUrl} onChange={(event) => setEventField('posterUrl', event.target.value)} className="input" placeholder="https://…" /></label>
             <label><span className="mb-1.5 block text-xs font-medium text-gray-400">Banner image URL (optional)</span><input type="url" value={eventForm.bannerUrl} onChange={(event) => setEventField('bannerUrl', event.target.value)} className="input" placeholder="https://…" /></label>
+            <div className="sm:col-span-2 grid gap-4 lg:grid-cols-2">
+              <ImageUploadField
+                id="event-poster"
+                label="Poster"
+                ratio="aspect-[2/3] max-w-[180px]"
+                urlValue={eventForm.posterUrl}
+                uploadValue={posterUpload}
+                onUploadChange={setPosterUpload}
+                onUploadingChange={(value) => setImageUploading((current) => ({ ...current, poster: value }))}
+                maxSizeMb={Number(import.meta.env.VITE_MAX_IMAGE_SIZE_MB) || 10}
+              />
+              <ImageUploadField
+                id="event-banner"
+                label="Banner"
+                ratio="aspect-[16/9]"
+                urlValue={eventForm.bannerUrl}
+                uploadValue={bannerUpload}
+                onUploadChange={setBannerUpload}
+                onUploadingChange={(value) => setImageUploading((current) => ({ ...current, banner: value }))}
+                maxSizeMb={Number(import.meta.env.VITE_MAX_IMAGE_SIZE_MB) || 10}
+              />
+            </div>
           </div>
-          <div className="mt-6 flex flex-wrap items-center gap-3"><button type="submit" disabled={busy} className="btn-primary"><Save className="h-4 w-4" />{busy ? 'Saving…' : isNew ? 'Save draft and continue' : 'Save event details'}</button>{!isNew && eventData?.status !== 'cancelled' && <button type="button" onClick={publishEvent} disabled={busy || !activePerformances.length} className="btn-secondary"><Send className="h-4 w-4" />Publish event</button>}{!isNew && eventData?.status !== 'cancelled' && <button type="button" onClick={cancelEvent} disabled={busy} className="btn-ghost text-gray-500 hover:text-red-300"><Trash2 className="h-4 w-4" />Cancel event</button>}</div>
+          <div className="mt-6 flex flex-wrap items-center gap-3"><button type="submit" disabled={busy || imageUploading.poster || imageUploading.banner} className="btn-primary"><Save className="h-4 w-4" />{busy ? 'Saving…' : isNew ? 'Save draft and continue' : 'Save event details'}</button>{!isNew && eventData?.status !== 'cancelled' && <button type="button" onClick={publishEvent} disabled={busy || imageUploading.poster || imageUploading.banner || !activePerformances.length} className="btn-secondary"><Send className="h-4 w-4" />Publish event</button>}{!isNew && eventData?.status !== 'cancelled' && <button type="button" onClick={cancelEvent} disabled={busy || imageUploading.poster || imageUploading.banner} className="btn-ghost text-gray-500 hover:text-red-300"><Trash2 className="h-4 w-4" />Cancel event</button>}</div>
           {!isNew && eventData?.status === 'draft' && !activePerformances.length && <p className="mt-3 text-xs text-amber-300">Add a future performance before publishing.</p>}
         </form>
 
@@ -276,7 +306,7 @@ export default function EventEditorPage() {
               {venues.length === 0 ? <div className="rounded-xl border border-dashed border-surface-border p-5 text-sm text-gray-400">Add a venue before scheduling a performance.<br /><Link to="/organizer/venues" className="mt-3 inline-flex items-center gap-1 text-brand-300 hover:text-brand-200">Open venue manager <ArrowLeft className="h-3.5 w-3.5 rotate-180" /></Link></div> : (
                 <form onSubmit={submitPerformance} className="flex flex-col gap-4">
                   <label><span className="mb-1.5 block text-xs font-medium text-gray-400">Performance name</span><input required maxLength="100" value={performanceForm.label} onChange={(event) => setPerformanceField('label', event.target.value)} className="input" placeholder="Friday evening" /></label>
-                  <label><span className="mb-1.5 block text-xs font-medium text-gray-400">Venue</span><select required disabled={Boolean(editingPerformanceId)} value={performanceForm.venueId} onChange={(event) => selectVenue(event.target.value)} className="input"><option value="">Choose a venue</option>{venues.filter((venue) => venue.isActive).map((venue) => <option key={venue._id} value={venue._id}>{venue.name} · {venue.address?.city}</option>)}</select></label>
+                  <label><span className="mb-1.5 block text-xs font-medium text-gray-400">Venue <Link className="ml-2 text-brand-300 hover:text-brand-200" to="/organizer/venues">Enter or edit the address in Venue Manager</Link></span><select required disabled={Boolean(editingPerformanceId)} value={performanceForm.venueId} onChange={(event) => selectVenue(event.target.value)} className="input"><option value="">Choose a venue</option>{venues.filter((venue) => venue.isActive).map((venue) => <option key={venue._id} value={venue._id}>{venue.name} · {venue.address?.city}</option>)}</select></label>
                   {selectedVenue?.inventoryKind === 'mixed' && !editingPerformanceId && <label><span className="mb-1.5 block text-xs font-medium text-gray-400">This performance uses</span><select value={performanceForm.inventoryKind} onChange={(event) => setPerformanceField('inventoryKind', event.target.value)} className="input"><option value="assigned">Assigned seating</option><option value="general">General admission</option></select></label>}
                   <div className="grid gap-3 sm:grid-cols-2"><label><span className="mb-1.5 block text-xs font-medium text-gray-400">Starts</span><input required type="datetime-local" value={performanceForm.startsAt} onChange={(event) => setPerformanceField('startsAt', event.target.value)} className="input" /></label><label><span className="mb-1.5 block text-xs font-medium text-gray-400">Ends</span><input required type="datetime-local" value={performanceForm.endsAt} onChange={(event) => setPerformanceField('endsAt', event.target.value)} className="input" /></label></div>
 
@@ -284,7 +314,7 @@ export default function EventEditorPage() {
 
                   {performanceForm.inventoryKind === 'assigned' && (activeCategories.length > 0 ? <div className="rounded-xl border border-surface-border bg-surface-elevated/50 p-4"><h3 className="text-sm font-semibold">Price by seat category</h3><p className="mt-1 text-xs text-gray-500">Prices are saved with this performance; each performance tracks its own seat availability.</p><div className="mt-3 grid gap-3 sm:grid-cols-2">{activeCategories.map((category) => <label key={category}><span className="mb-1.5 block text-xs capitalize text-gray-400">{category} · INR</span><input required type="number" min="0" step="0.01" value={priceTiers[category] ?? '0'} onChange={(event) => setPriceTiers((current) => ({ ...current, [category]: event.target.value }))} className="input" /></label>)}</div></div> : <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs leading-5 text-amber-200">The selected venue has no unblocked seats with a price category. Update its map first.</div>)}
 
-                  {selectedVenue && <div className="rounded-xl border border-surface-border bg-surface-elevated/50 p-3 text-xs text-gray-400"><span className="inline-flex items-center gap-1.5 font-medium text-gray-300"><MapPin className="h-3.5 w-3.5" />{selectedVenue.name}</span><span className="ml-2">{selectedVenue.capacity} maximum capacity</span>{performanceForm.inventoryKind === 'assigned' && <span className="ml-2">· {collectCategories(selectedVenue.layout).length} seat categories</span>}</div>}
+                  {selectedVenue && <div className="rounded-xl border border-surface-border bg-surface-elevated/50 p-3 text-xs text-gray-400"><span className="inline-flex items-center gap-1.5 font-medium text-gray-300"><MapPin className="h-3.5 w-3.5" />{selectedVenue.name}</span><p className="mt-1 leading-5">{[selectedVenue.address?.line1, selectedVenue.address?.line2, [selectedVenue.address?.city, selectedVenue.address?.state, selectedVenue.address?.postalCode].filter(Boolean).join(' '), selectedVenue.address?.country].filter(Boolean).join(', ')}</p><p className="mt-2">{selectedVenue.capacity} maximum capacity{performanceForm.inventoryKind === 'assigned' && ` · ${collectCategories(selectedVenue.layout).length} seat categories`}</p></div>}
 
                   <div className="flex flex-wrap gap-2"><button type="submit" disabled={busy || (performanceForm.inventoryKind === 'assigned' && !activeCategories.length)} className="btn-primary"><Plus className="h-4 w-4" />{busy ? 'Saving…' : editingPerformanceId ? 'Save performance' : 'Add performance'}</button>{editingPerformanceId && <button type="button" onClick={resetPerformanceForm} className="btn-secondary">Stop editing</button>}</div>
                 </form>

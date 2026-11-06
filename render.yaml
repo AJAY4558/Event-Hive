@@ -1,0 +1,60 @@
+# EventHive Render Blueprint. Secret values are entered in the Render Dashboard.
+services:
+  - type: web
+    name: eventhive-api
+    runtime: node
+    region: singapore
+    plan: free
+    autoDeploy: false
+    buildCommand: npm ci
+    startCommand: npm run start --workspace=backend
+    healthCheckPath: /health/ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: PAYMENT_PROVIDER
+        value: sandbox
+      - key: UPLOAD_STORAGE_DRIVER
+        value: s3
+      - key: UPLOAD_S3_BUCKET
+        sync: false
+      - key: UPLOAD_S3_REGION
+        sync: false
+      - key: UPLOAD_PUBLIC_BASE_URL
+        sync: false
+      - key: UPLOAD_S3_ACCESS_KEY_ID
+        sync: false
+      - key: UPLOAD_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: CORS_ORIGIN
+        fromService:
+          type: web
+          name: eventhive-frontend
+          envVarKey: RENDER_EXTERNAL_URL
+
+  - type: web
+    name: eventhive-frontend
+    runtime: static
+    autoDeploy: false
+    buildCommand: >-
+      npm ci &&
+      VITE_API_BASE_URL="${EVENTHIVE_API_URL}/api"
+      VITE_SOCKET_URL="${EVENTHIVE_API_URL}"
+      npm run build:frontend
+    staticPublishPath: frontend/dist
+    routes:
+      - type: rewrite
+        source: "/*"
+        destination: /index.html
+    envVars:
+      - key: EVENTHIVE_API_URL
+        fromService:
+          type: web
+          name: eventhive-api
+          envVarKey: RENDER_EXTERNAL_URL

@@ -1,6 +1,7 @@
 'use strict';
 
 const mongoose = require('mongoose');
+const { URL } = require('node:url');
 const { Event } = require('../../models/Event');
 const { Venue } = require('../../models/Venue');
 const { Booking } = require('../../models/Booking');
@@ -37,7 +38,28 @@ async function findManagedEvent(eventId, user) {
 }
 
 async function createEvent(input, user) {
+  validateUploadedImages(input, user.userId);
   return Event.create({ ...input, ownerId: user.userId, status: 'draft' });
+}
+
+function validateUploadedImages(input, ownerId) {
+  for (const image of [input.posterUpload, input.bannerUpload]) {
+    if (!image) continue;
+    const keyOwnerId = image.storageKey.split('/')[1];
+    if (keyOwnerId !== String(ownerId)) {
+      throw makeError('An uploaded image can only be attached by its organizer.', 403);
+    }
+    let imagePath;
+    try {
+      imagePath = image.url.startsWith('/') ? image.url : new URL(image.url).pathname;
+      imagePath = decodeURIComponent(imagePath);
+    } catch {
+      throw makeError('Uploaded image URL does not match its storage key.', 422);
+    }
+    if (!imagePath.endsWith('/' + image.storageKey)) {
+      throw makeError('Uploaded image URL does not match its storage key.', 422);
+    }
+  }
 }
 
 async function updateEvent(eventId, input, user) {
@@ -49,6 +71,7 @@ async function updateEvent(eventId, input, user) {
       if (!event) throw makeError('Event not found.', 404);
       if (!canManage(event, user)) throw makeError('You do not have access to this event.', 403);
       if (event.status === 'cancelled') throw makeError('Cancelled events cannot be edited.', 409);
+      validateUploadedImages(input, event.ownerId);
       Object.assign(event, input);
       await event.save({ session });
       await auditAdminChange(session, user, 'event.details.update', 'event', event._id, { fields: Object.keys(input) });

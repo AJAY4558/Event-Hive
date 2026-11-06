@@ -24,6 +24,13 @@ export async function startE2EPreviewServer(port = 5174) {
   const viteConfig = {
     ...projectConfig,
     root,
+    server: {
+      ...projectConfig.server,
+      proxy: Object.fromEntries(Object.entries(projectConfig.server.proxy).map(([route, options]) => [
+        route,
+        { ...options, target: apiUrl },
+      ])),
+    },
     // Import the project config natively above. Vite's config bundler uses
     // esbuild to traverse parent directories, which is blocked in this managed
     // workspace. Passing the same config object avoids that extra bundle step.
@@ -39,7 +46,12 @@ export async function startE2EPreviewServer(port = 5174) {
 
   const server = await preview({
     ...viteConfig,
-    preview: { host: '127.0.0.1', port, strictPort: true },
+    preview: {
+      host: '127.0.0.1',
+      port,
+      strictPort: true,
+      proxy: viteConfig.server.proxy,
+    },
   });
   server.printUrls();
 

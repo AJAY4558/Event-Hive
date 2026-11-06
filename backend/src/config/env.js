@@ -2,6 +2,15 @@
 
 const { z } = require('zod');
 
+function supportsReplicaSet(uri) {
+  // Atlas SRV records discover the replica-set members automatically. Keep
+  // requiring an explicit replicaSet option for standard mongodb:// URIs.
+  return (
+    /^mongodb\+srv:\/\//i.test(uri) ||
+    /(?:\?|&)replicaSet=rs0(?:&|$)/i.test(uri)
+  );
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
@@ -11,9 +20,9 @@ const envSchema = z.object({
     .string()
     .min(1, 'MONGO_URI is required')
     .refine(
-      (uri) => uri.includes('replicaSet='),
-      'MONGO_URI must include replicaSet=rs0 for transaction support. ' +
-        'See README.md for replica-set setup instructions.'
+      supportsReplicaSet,
+      'MONGO_URI must target a replica set. Use an Atlas mongodb+srv URI or include replicaSet=rs0. ' +
+        'See README.md for database setup instructions.'
     ),
 
   // Auth
@@ -27,7 +36,14 @@ const envSchema = z.object({
 
   // Uploads
   UPLOAD_DIR: z.string().default('./uploads'),
-  MAX_FILE_SIZE_MB: z.coerce.number().int().positive().default(10),
+  MAX_FILE_SIZE_MB: z.coerce.number().int().positive().max(50).default(10),
+  UPLOAD_STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  UPLOAD_PUBLIC_BASE_URL: z.string().url().optional(),
+  UPLOAD_S3_ENDPOINT: z.string().url().optional(),
+  UPLOAD_S3_BUCKET: z.string().trim().min(1).optional(),
+  UPLOAD_S3_REGION: z.string().trim().min(1).default('us-east-1'),
+  UPLOAD_S3_ACCESS_KEY_ID: z.string().optional(),
+  UPLOAD_S3_SECRET_ACCESS_KEY: z.string().optional(),
 
   // Booking
   HOLD_EXPIRY_MINUTES: z.coerce.number().int().positive().default(15),
@@ -63,4 +79,4 @@ function loadEnv() {
 
 const env = loadEnv();
 
-module.exports = { env };
+module.exports = { env, supportsReplicaSet };

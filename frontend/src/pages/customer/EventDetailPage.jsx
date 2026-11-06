@@ -83,6 +83,7 @@ export default function EventDetailPage() {
   const performances = useMemo(() => (event?.performances || [])
     .filter((performance) => performance.status === 'scheduled' && new Date(performance.startsAt) > new Date())
     .sort((first, second) => new Date(first.startsAt) - new Date(second.startsAt)), [event]);
+  const heroImage = event?.bannerUpload?.url || event?.bannerUrl || event?.posterUpload?.url || event?.posterUrl;
   const selectedPerformance = performances.find((performance) => performance._id === selectedPerformanceId);
 
   useEffect(() => {
@@ -200,24 +201,24 @@ export default function EventDetailPage() {
       <main className="mx-auto max-w-6xl px-5 pb-16 pt-8 sm:pt-12">
         <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10">
           <div>
-            <div className="relative aspect-[16/10] overflow-hidden rounded-3xl border border-surface-border bg-gradient-to-br from-brand-950 via-surface-elevated to-surface-card">
-              {event.bannerUrl || event.posterUrl ? (
-                <img src={event.bannerUrl || event.posterUrl} alt="" className="h-full w-full object-cover" />
+            <div className="comic-poster comic-detail-poster relative aspect-[16/10] overflow-hidden rounded-3xl border border-surface-border bg-gradient-to-br from-brand-950 via-surface-elevated to-surface-card">
+              {heroImage ? (
+                <img src={heroImage} alt="" className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full items-end p-7 sm:p-10"><span className="max-w-xl font-display text-4xl font-bold leading-tight text-white/80 sm:text-5xl">{event.title}</span></div>
               )}
               <span className="absolute left-5 top-5 rounded-full border border-white/15 bg-black/55 px-3 py-1 text-xs font-semibold uppercase tracking-wide backdrop-blur">{event.category}</span>
             </div>
             <div className="mt-8">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-300">Event details</p>
-              <h1 className="mt-3 font-display text-3xl font-bold leading-tight sm:text-5xl">{event.title}</h1>
+              <p className="comic-eyebrow w-fit text-xs font-semibold uppercase tracking-[0.2em] text-brand-300">Event details</p>
+              <h1 className="comic-title mt-3 font-display text-3xl font-bold leading-tight sm:text-5xl">{event.title}</h1>
               <p className="mt-5 whitespace-pre-line text-base leading-7 text-gray-300">{event.description}</p>
               {event.tags?.length > 0 && <div className="mt-6 flex flex-wrap gap-2">{event.tags.map((tag) => <span key={tag} className="rounded-full border border-surface-border px-3 py-1 text-xs text-gray-400">{tag}</span>)}</div>}
             </div>
           </div>
 
           <aside className="space-y-5">
-            <section className="rounded-3xl border border-surface-border bg-surface-card p-5 sm:p-7">
+            <section className="booking-panel rounded-3xl border border-surface-border bg-surface-card p-5 sm:p-7">
               <div className="flex items-start justify-between gap-4">
                 <div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-300">Schedule</p><h2 className="mt-2 font-display text-2xl font-bold">Choose a performance</h2></div>
                 <CalendarDays className="h-6 w-6 text-brand-300" />
@@ -243,7 +244,12 @@ export default function EventDetailPage() {
                         </div>
                         <div className="mt-4 grid gap-2 text-xs text-gray-400">
                           <p className="flex items-start gap-2"><Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-500" />{formatDate(performance.startsAt, { hour: 'numeric', minute: '2-digit' })} – {formatDate(performance.endsAt, { hour: 'numeric', minute: '2-digit' })}</p>
-                          <p className="flex items-start gap-2"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-500" /><span>{performance.venueName}<br />{performance.venueAddress?.line1}, {performance.venueAddress?.city}</span></p>
+                          <p className="flex items-start gap-2"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-500" /><span>{performance.venueName}<br />{[
+                            performance.venueAddress?.line1,
+                            performance.venueAddress?.line2,
+                            [performance.venueAddress?.city, performance.venueAddress?.state, performance.venueAddress?.postalCode].filter(Boolean).join(' '),
+                            performance.venueAddress?.country,
+                          ].filter(Boolean).join(', ') || 'Location details coming soon'}</span></p>
                           <p className="flex items-center gap-2"><Ticket className="h-3.5 w-3.5 text-gray-500" />{performance.inventoryKind === 'general' ? 'General admission' : 'Assigned seating'}</p>
                         </div>
                       </button>
@@ -254,7 +260,7 @@ export default function EventDetailPage() {
             </section>
 
             {selectedPerformance && (
-              <section className="rounded-3xl border border-surface-border bg-surface-card p-5 sm:p-7">
+              <section className="booking-panel rounded-3xl border border-surface-border bg-surface-card p-5 sm:p-7">
                 <div className="flex items-start justify-between gap-4">
                   <div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-300">Tickets</p><h2 className="mt-2 font-display text-xl font-bold">{selectedPerformance.label}</h2></div>
                   <button type="button" onClick={refreshAvailability} className="btn-ghost !px-2" aria-label="Refresh availability"><RefreshCw className="h-4 w-4" /></button>

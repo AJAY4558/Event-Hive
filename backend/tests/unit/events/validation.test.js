@@ -23,6 +23,33 @@ describe('Phase 3 event and venue validation', () => {
     }).success).toBe(true);
   });
 
+  it('accepts independently persisted poster and banner upload metadata while retaining manual URLs', () => {
+    const image = {
+      url: '/uploads/organizers/0123456789abcdef01234567/01234567-89ab-4cde-8fab-0123456789ab.png',
+      storageKey: 'organizers/0123456789abcdef01234567/01234567-89ab-4cde-8fab-0123456789ab.png',
+      originalName: 'event image.png',
+      mimeType: 'image/png',
+      size: 128,
+      uploadedAt: new Date().toISOString(),
+    };
+    const valid = eventDetails.safeParse({
+      title: 'A draft with event artwork',
+      description: 'This draft keeps the original manual image links beside uploaded artwork.',
+      category: 'concert',
+      posterUrl: 'https://images.example.test/manual-poster.jpg',
+      bannerUrl: 'https://images.example.test/manual-banner.jpg',
+      posterUpload: image,
+      bannerUpload: { ...image, url: image.url.replace('.png', '.png'), storageKey: image.storageKey },
+    });
+    expect(valid.success).toBe(true);
+    expect(eventDetails.safeParse({
+      title: 'An invalid upload reference',
+      description: 'This event contains a storage reference outside the upload namespace.',
+      category: 'concert',
+      posterUpload: { ...image, storageKey: '../other-organizer/image.png' },
+    }).success).toBe(false);
+  });
+
   it('rejects duplicate seat labels and invalid aisle positions', () => {
     const duplicateSeat = layoutSchema.safeParse({
       stageLabel: 'Stage',

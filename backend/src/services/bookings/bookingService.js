@@ -35,7 +35,7 @@ function snapshotFor(event, performance) {
     eventSnapshot: {
       title: event.title,
       category: event.category,
-      posterUrl: event.posterUrl,
+      posterUrl: event.posterUpload?.url || event.posterUrl,
     },
     performanceSnapshot: {
       label: performance.label,

@@ -13,22 +13,22 @@ export default function SeatSelector({ availability, selectedSeatIds, onToggle, 
   const seatsById = new Map((availability?.seats || []).map((seat) => [seat.seatId, seat]));
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-xl border border-surface-border bg-surface-elevated/50 p-4 text-center">
+    <div className="space-y-5 seat-selector">
+      <div className="p-4 text-center border rounded-xl border-surface-border bg-surface-elevated/50">
         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-500">Stage</p>
         <div className="mx-auto mt-2 h-1.5 max-w-xs rounded-full bg-gradient-brand opacity-80" />
       </div>
 
       {(availability?.seatMap?.sections || []).map((section) => (
-        <section key={section.id || section.name} aria-label={section.name} className="rounded-2xl border border-surface-border bg-surface-elevated/30 p-4">
-          <div className="mb-4 flex items-center justify-between gap-3">
+        <section key={section.id || section.name} aria-label={section.name} className="p-4 border rounded-2xl border-surface-border bg-surface-elevated/30">
+          <div className="flex items-center justify-between gap-3 mb-4">
             <h4 className="font-semibold">{section.name}</h4>
             <span className="text-[11px] text-gray-500">Section</span>
           </div>
-          <div className="space-y-3 overflow-x-auto pb-1">
+          <div className="pb-1 space-y-3 overflow-x-auto">
             {(section.rows || []).map((row) => (
-              <div key={row.id || row.label} className="flex min-w-max items-center gap-3">
-                <span className="w-7 shrink-0 text-xs font-semibold text-gray-500">{row.label}</span>
+              <div key={row.id || row.label} className="flex items-center gap-3 min-w-max">
+                <span className="text-xs font-semibold text-gray-500 w-7 shrink-0">{row.label}</span>
                 <div className="flex items-center gap-1.5">
                   {(row.seats || []).map((seat, index) => {
                     const liveSeat = seatsById.get(seat.id);
@@ -46,7 +46,7 @@ export default function SeatSelector({ availability, selectedSeatIds, onToggle, 
                           aria-pressed={selected}
                           disabled={disabled || unavailable || liveSeat.blocked || !availability.isBookable}
                           onClick={() => onToggle(liveSeat)}
-                          className={'group flex min-h-14 w-[4.5rem] flex-col items-center justify-center rounded-xl border px-1.5 py-1 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ' + (
+                          className={'seat-cell group flex min-h-14 w-[4.5rem] flex-col items-center justify-center rounded-xl border px-1.5 py-1 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ' + (
                             selected
                               ? 'border-brand-300 bg-brand-500/20 text-white ring-1 ring-brand-300/50'
                               : liveSeat.booked
@@ -59,8 +59,8 @@ export default function SeatSelector({ availability, selectedSeatIds, onToggle, 
                           )}
                         >
                           <span className="flex items-center gap-1 text-xs">
-                            {liveSeat.accessible && <Accessibility className="h-3 w-3" aria-hidden="true" />}
-                            {selected ? <Check className="h-3 w-3" aria-hidden="true" /> : null}
+                            {liveSeat.accessible && <Accessibility className="w-3 h-3" aria-hidden="true" />}
+                            {selected ? <Check className="w-3 h-3" aria-hidden="true" /> : null}
                             {liveSeat.label}
                           </span>
                           <span className="mt-0.5 font-normal">{priceLabel(liveSeat.price)}</span>

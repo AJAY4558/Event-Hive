@@ -39,18 +39,19 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-dvh bg-surface flex items-center justify-center p-4">
-      <div className="w-full max-w-sm animate-fade-in">
+    <div className="comic-auth-page min-h-dvh bg-surface flex items-center justify-center p-4">
+      <div className="comic-auth-shell w-full max-w-sm animate-fade-in">
         {/* Logo */}
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-9 h-9 rounded-xl bg-gradient-brand flex items-center justify-center shadow-lg shadow-brand-500/30">
+        <div className="comic-auth-brand flex items-center justify-center gap-2 mb-8">
+          <div className="comic-auth-mark w-9 h-9 rounded-xl bg-gradient-brand flex items-center justify-center shadow-lg shadow-brand-500/30">
             <span className="text-white font-display font-bold">E</span>
           </div>
           <span className="text-xl font-display font-bold text-white">EventHive</span>
         </div>
 
-        <div className="card p-8">
-          <h1 className="text-2xl font-display font-bold text-white text-center mb-1">
+        <div className="comic-auth-card card p-8">
+          <p className="comic-auth-eyebrow mb-3 text-center text-[10px] font-bold uppercase tracking-[0.24em]">Find your place in the story</p>
+          <h1 className="comic-auth-title text-2xl font-display font-bold text-white text-center mb-1">
             Create account
           </h1>
           <p className="text-gray-400 text-sm text-center mb-6">Join EventHive today</p>

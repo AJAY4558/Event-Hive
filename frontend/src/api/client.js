@@ -26,8 +26,13 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response) {
-      const baseMessage = error.response.data?.error ?? 'An unexpected error occurred.';
-      const fieldMessages = Object.values(error.response.data?.fields ?? {}).filter(Boolean);
+      const responseBody = error.response.data;
+      const baseMessage = typeof responseBody?.error === 'string'
+        ? responseBody.error
+        : error.response.status >= 500
+          ? `EventHive API unavailable (HTTP ${error.response.status}). Check the local backend and try again.`
+          : 'An unexpected error occurred.';
+      const fieldMessages = Object.values(responseBody?.fields ?? {}).filter(Boolean);
       const message = fieldMessages.length
         ? `${baseMessage}: ${fieldMessages.join('; ')}`
         : baseMessage;
@@ -37,7 +42,9 @@ api.interceptors.response.use(
       return Promise.reject(apiError);
     }
     if (error.request) {
-      return Promise.reject(new Error('Network error — check your connection.'));
+      return Promise.reject(
+        new Error('Could not reach the EventHive API. Check that the local backend is running and try again.')
+      );
     }
     return Promise.reject(error);
   }

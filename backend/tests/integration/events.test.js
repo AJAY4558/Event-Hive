@@ -1,11 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import supertest from 'supertest';
 import mongoose from 'mongoose';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { createApp } from '../../src/app.js';
 import { connectDb, disconnectDb } from '../../src/config/db.js';
 import { Event } from '../../src/models/Event.js';
 import { Venue } from '../../src/models/Venue.js';
 import { signAccessToken } from '../../src/utils/tokens.js';
+import { env } from '../../src/config/env.js';
 
 describe('Phase 3 — events, venues, and performances', () => {
   let request;
@@ -13,6 +16,8 @@ describe('Phase 3 — events, venues, and performances', () => {
   const otherOwnerId = new mongoose.Types.ObjectId().toString();
   const ownerToken = signAccessToken({ userId: ownerId, role: 'organizer', email: 'phase3@eventhive.test' });
   const otherOwnerToken = signAccessToken({ userId: otherOwnerId, role: 'organizer', email: 'other@eventhive.test' });
+  const customerToken = signAccessToken({ userId: new mongoose.Types.ObjectId().toString(), role: 'customer', email: 'customer@eventhive.test' });
+  const uploadedStorageKeys = [];
 
   beforeAll(async () => {
     await connectDb();
@@ -20,6 +25,12 @@ describe('Phase 3 — events, venues, and performances', () => {
   }, 30_000);
 
   afterAll(async () => {
+    await Promise.all(uploadedStorageKeys.map(async (storageKey) => {
+      const filePath = path.resolve(env.UPLOAD_DIR, ...storageKey.split('/'));
+      await fs.unlink(filePath).catch((error) => {
+        if (error.code !== 'ENOENT') throw error;
+      });
+    }));
     if (mongoose.connection.readyState === 1) {
       await Event.deleteMany({ ownerId: { $in: [ownerId, otherOwnerId] } });
       await Venue.deleteMany({ ownerId: { $in: [ownerId, otherOwnerId] } });
@@ -41,7 +52,7 @@ describe('Phase 3 — events, venues, and performances', () => {
   async function createAssignedVenue() {
     const response = await request.post('/api/venues').set('Authorization', 'Bearer ' + ownerToken).send({
       name: 'Phase Three Hall',
-      address: { line1: '42 Park Street', city: 'Test City', country: 'India' },
+      address: { line1: '42 Park Street', line2: 'Suite 2', city: 'Test City', state: 'Test State', postalCode: '400001', country: 'India' },
       capacity: 2,
       inventoryKind: 'assigned',
       layout: {
@@ -120,6 +131,14 @@ describe('Phase 3 — events, venues, and performances', () => {
 
     const detail = await request.get('/api/events/' + event._id);
     expect(detail.status).toBe(200);
+    expect(detail.body.event.performances[0].venueAddress).toMatchObject({
+      line1: '42 Park Street',
+      line2: 'Suite 2',
+      city: 'Test City',
+      state: 'Test State',
+      postalCode: '400001',
+      country: 'India',
+    });
     expect(detail.body.event.performances[0].seatMap.sections[0].rows[0].seats).toHaveLength(2);
     expect(detail.body.event.performances[0].seatMap.sections[0].rows[0].seats.map((seat) => seat.id)).toEqual(originalSeatIds);
 
@@ -171,5 +190,96 @@ describe('Phase 3 — events, venues, and performances', () => {
         priceTiers: [{ category: 'standard', price: 500 }, { category: 'premium', price: 900 }],
       });
     expect(response.status).toBe(403);
+  });
+
+  it('stores validated organizer images outside MongoDB and preserves URL fallbacks in event drafts', async () => {
+    const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c636000020000050001a5f645400000000049454e44ae426082', 'hex');
+    const unauthenticated = await request.post('/api/events/uploads');
+    expect(unauthenticated.status).toBe(401);
+    const customerUpload = await request.post('/api/events/uploads')
+      .set('Authorization', 'Bearer ' + customerToken)
+      .attach('image', png, { filename: 'poster.png', contentType: 'image/png' });
+    expect(customerUpload.status).toBe(403);
+
+    const uploaded = await request.post('/api/events/uploads')
+      .set('Authorization', 'Bearer ' + ownerToken)
+      .attach('image', png, { filename: 'poster.png', contentType: 'image/png' });
+    expect(uploaded.status).toBe(201);
+    expect(uploaded.body.image).toMatchObject({
+      url: expect.stringMatching(/^\/uploads\/organizers\//),
+      storageKey: expect.stringMatching(new RegExp(`^organizers/${ownerId}/`)),
+      originalName: 'poster.png',
+      mimeType: 'image/png',
+      size: png.length,
+    });
+    uploadedStorageKeys.push(uploaded.body.image.storageKey);
+    const staticImage = await request.get(uploaded.body.image.url);
+    expect(staticImage.status).toBe(200);
+    expect(staticImage.headers['content-type']).toMatch(/image\/png/);
+    expect(staticImage.body).toEqual(png);
+
+    const invalidExtension = await request.post('/api/events/uploads')
+      .set('Authorization', 'Bearer ' + ownerToken)
+      .attach('image', png, { filename: 'poster.gif', contentType: 'image/gif' });
+    expect(invalidExtension.status).toBe(415);
+    const mismatchedMime = await request.post('/api/events/uploads')
+      .set('Authorization', 'Bearer ' + ownerToken)
+      .attach('image', png, { filename: 'poster.png', contentType: 'image/jpeg' });
+    expect(mismatchedMime.status).toBe(415);
+    const fakeImage = await request.post('/api/events/uploads')
+      .set('Authorization', 'Bearer ' + ownerToken)
+      .attach('image', Buffer.from('not an image'), { filename: 'poster.png', contentType: 'image/png' });
+    expect(fakeImage.status).toBe(415);
+    const oversized = await request.post('/api/events/uploads')
+      .set('Authorization', 'Bearer ' + ownerToken)
+      .attach('image', Buffer.alloc(env.MAX_FILE_SIZE_MB * 1024 * 1024 + 1), { filename: 'large.png', contentType: 'image/png' });
+    expect(oversized.status).toBe(413);
+
+    const manualPosterUrl = 'https://images.example.test/phase-three-poster.jpg';
+    const eventResponse = await request.post('/api/events')
+      .set('Authorization', 'Bearer ' + ownerToken)
+      .send({
+        title: 'Uploaded artwork draft',
+        description: 'A draft that retains its separate uploaded image and manual image URL.',
+        category: 'concert',
+        posterUrl: manualPosterUrl,
+        posterUpload: uploaded.body.image,
+      });
+    expect(eventResponse.status).toBe(201);
+    expect(eventResponse.body.event.posterUrl).toBe(manualPosterUrl);
+    expect(eventResponse.body.event.posterUpload.originalName).toBe('poster.png');
+
+    const forbiddenAttach = await request.post('/api/events')
+      .set('Authorization', 'Bearer ' + otherOwnerToken)
+      .send({
+        title: 'Another organizer image test',
+        description: 'This organizer must not attach another person uploaded artwork.',
+        category: 'concert',
+        posterUpload: uploaded.body.image,
+      });
+    expect(forbiddenAttach.status).toBe(403);
+
+    const otherEvent = await createEvent('Other Organizer Upload Test', otherOwnerToken);
+    const forbiddenUpdate = await request.patch('/api/events/' + otherEvent._id)
+      .set('Authorization', 'Bearer ' + otherOwnerToken)
+      .send({ posterUpload: uploaded.body.image });
+    expect(forbiddenUpdate.status).toBe(403);
+
+    const reopened = await request.get('/api/events/organizer/' + eventResponse.body.event._id)
+      .set('Authorization', 'Bearer ' + ownerToken);
+    expect(reopened.status).toBe(200);
+    expect(reopened.body.event.posterUrl).toBe(manualPosterUrl);
+    expect(reopened.body.event.posterUpload).toMatchObject({
+      url: uploaded.body.image.url,
+      storageKey: uploaded.body.image.storageKey,
+      mimeType: 'image/png',
+    });
+
+    const removed = await request.patch('/api/events/' + eventResponse.body.event._id)
+      .set('Authorization', 'Bearer ' + ownerToken)
+      .send({ posterUpload: null });
+    expect(removed.status).toBe(200);
+    expect(removed.body.event.posterUpload).toBeNull();
+    expect(removed.body.event.posterUrl).toBe(manualPosterUrl);
   });
 });

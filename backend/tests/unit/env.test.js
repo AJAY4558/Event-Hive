@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { env } from '../../src/config/env.js';
+import { env, supportsReplicaSet } from '../../src/config/env.js';
 
 describe('env config', () => {
   it('loads NODE_ENV as test', () => {
@@ -8,6 +8,11 @@ describe('env config', () => {
 
   it('MONGO_URI includes replicaSet', () => {
     expect(env.MONGO_URI).toContain('replicaSet=');
+  });
+
+  it('accepts Atlas SRV URIs while rejecting standalone MongoDB URIs', () => {
+    expect(supportsReplicaSet('mongodb+srv://user:pass@cluster.example.mongodb.net/eventhive')).toBe(true);
+    expect(supportsReplicaSet('mongodb://127.0.0.1:27017/eventhive')).toBe(false);
   });
 
   it('JWT_SECRET has minimum length', () => {
@@ -29,5 +34,10 @@ describe('env config', () => {
 
   it('PAYMENT_PROVIDER defaults to sandbox', () => {
     expect(env.PAYMENT_PROVIDER).toBe('sandbox');
+  });
+
+  it('uses local image storage by default and keeps the image limit positive', () => {
+    expect(env.UPLOAD_STORAGE_DRIVER).toBe('local');
+    expect(env.MAX_FILE_SIZE_MB).toBeGreaterThan(0);
   });
 });

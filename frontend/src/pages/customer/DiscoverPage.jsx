@@ -139,6 +139,9 @@ export default function DiscoverPage() {
   }, [isCustomer]);
 
   const visibleEvents = showFavoritesOnly ? favoriteEvents : events;
+  const featuredEvent = events[0] || null;
+  const featuredPerformance = featuredEvent ? nextPerformance(featuredEvent) : null;
+  const featuredPrice = startingPrice(featuredPerformance);
 
   const submitSearch = (event) => {
     event.preventDefault();
@@ -179,12 +182,13 @@ export default function DiscoverPage() {
     <div className="min-h-dvh bg-surface text-white">
       <header className="sticky top-0 z-20 border-b border-surface-border/80 bg-surface/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4 lg:px-8">
-          <Link to="/" className="flex shrink-0 items-center gap-2.5" aria-label="EventHive home">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-brand font-display font-bold shadow-lg shadow-brand-500/25">E</span>
-            <span className="font-display text-lg font-bold tracking-tight">EventHive</span>
+          <Link to="/" className="multiverse-wordmark flex shrink-0 items-center gap-2.5" aria-label="EventHive home">
+            <span className="flex h-9 w-9 items-center justify-center bg-gradient-brand font-display font-bold shadow-lg shadow-brand-500/25">E</span>
+            <span className="font-display text-lg font-bold tracking-tight">EventHive <span className="multiverse-tag">Multiverse</span></span>
           </Link>
           <nav className="flex items-center gap-2 sm:gap-4">
-            <a href="#discover" className="hidden text-sm text-gray-300 transition hover:text-white sm:inline">Discover</a>
+            <a href="#discover" className="multiverse-nav-link hidden text-sm text-gray-300 transition hover:text-white sm:inline">Discover events</a>
+            {isAuthenticated && user?.role === 'customer' && <Link to="/profile" className="multiverse-nav-link hidden text-sm text-gray-300 transition hover:text-white sm:inline">My bookings</Link>}
             {isAuthenticated && user?.role === 'organizer' && (
               <Link to="/organizer" className="hidden text-sm text-gray-300 transition hover:text-white sm:inline">Organizer studio</Link>
             )}
@@ -201,23 +205,49 @@ export default function DiscoverPage() {
       </header>
 
       <main>
-        <section className="relative overflow-hidden border-b border-surface-border">
-          <div className="pointer-events-none absolute -right-32 -top-48 h-[34rem] w-[34rem] rounded-full bg-brand-600/10 blur-3xl" />
-          <div className="pointer-events-none absolute -left-52 bottom-[-20rem] h-[38rem] w-[38rem] rounded-full bg-violet-600/10 blur-3xl" />
-          <div className="relative mx-auto max-w-7xl px-5 pb-14 pt-16 sm:pb-20 sm:pt-24 lg:px-8">
-            <div className="max-w-3xl">
-              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand-500/25 bg-brand-500/10 px-3 py-1.5 text-xs font-medium text-brand-200">
-                <Sparkles className="h-3.5 w-3.5" /> Find your next live moment
+        <section className="comic-hero relative overflow-hidden border-b border-surface-border">
+          <div className="relative mx-auto max-w-7xl px-5 pb-12 pt-8 sm:pb-16 sm:pt-12 lg:px-8">
+            <div className="multiverse-statusbar"><span className="multiverse-status-dot" /> EVENT RADAR <span className="multiverse-status-separator">//</span> {phase === 'loading' ? 'SYNCING LISTINGS' : phase === 'error' ? 'RADAR OFFLINE' : `${total} PUBLISHED LISTING${total === 1 ? '' : 'S'}`}</div>
+            <div className="multiverse-hero-grid">
+              <div className="multiverse-hero-copy">
+                <div className="comic-eyebrow mb-5 inline-flex items-center gap-2 border border-brand-500/25 bg-brand-500/10 px-3 py-1.5 text-xs font-medium text-brand-200">
+                  <Sparkles className="h-3.5 w-3.5" /> Your city. Your next story.
+                </div>
+                <h1 className="comic-title font-display text-5xl font-bold leading-[.96] tracking-tight sm:text-7xl">
+                  Jump into the <span className="multiverse-title-accent">Event Multiverse.</span>
+                </h1>
+                <p className="mt-5 max-w-xl text-base leading-7 text-gray-300 sm:text-lg">
+                  Find live music, screenings, festivals, and one-of-a-kind experiences happening around you.
+                </p>
+                <div className="mt-7 flex flex-wrap gap-3">
+                  <a href="#discover" className="btn-primary">Explore events <ArrowRight className="h-4 w-4" /></a>
+                  {!isAuthenticated && <Link to="/register" className="btn-secondary">Join EventHive</Link>}
+                  {isAuthenticated && user?.role === 'organizer' && <Link to="/organizer/events/new" className="btn-secondary">Create an event</Link>}
+                </div>
               </div>
-              <h1 className="font-display text-4xl font-bold leading-[1.08] tracking-tight sm:text-6xl">
-                Make room for <span className="text-brand-300">something unforgettable.</span>
-              </h1>
-              <p className="mt-5 max-w-xl text-base leading-7 text-gray-400 sm:text-lg">
-                Find the shows, screenings, and gatherings happening around you.
-              </p>
+
+              {featuredEvent ? (
+                <Link to={'/events/' + featuredEvent._id} className="multiverse-featured-event group">
+                  <div className="multiverse-featured-art">
+                    {featuredEvent.bannerUpload?.url || featuredEvent.bannerUrl || featuredEvent.posterUpload?.url || featuredEvent.posterUrl ? (
+                      <img src={featuredEvent.bannerUpload?.url || featuredEvent.bannerUrl || featuredEvent.posterUpload?.url || featuredEvent.posterUrl} alt="" />
+                    ) : <div className="multiverse-featured-placeholder"><Ticket className="h-12 w-12" /><span>{featuredEvent.title}</span></div>}
+                    <span className="multiverse-featured-kicker">FEATURED EVENT</span>
+                    {featuredPerformance && <span className="multiverse-featured-date">{formatDate(featuredPerformance.startsAt)}</span>}
+                  </div>
+                  <div className="multiverse-featured-info">
+                    <div><span className="multiverse-category-label">{CATEGORY_LABELS[featuredEvent.category] || 'Event'}</span><h2>{featuredEvent.title}</h2><p><MapPin className="h-4 w-4" /> {featuredPerformance?.venueAddress?.city || 'Location details coming soon'}</p></div>
+                    <div className="multiverse-featured-cta"><span>{featuredPrice === null ? 'Price to be announced' : `From ${currency(featuredPrice)}`}</span><span className="multiverse-arrow"><ArrowRight className="h-5 w-5" /></span></div>
+                  </div>
+                </Link>
+              ) : phase === 'loading' ? (
+                <div className="multiverse-featured-event multiverse-featured-empty" role="status"><Loader2 className="h-8 w-8 animate-spin" /><span>Tuning into the event radar…</span></div>
+              ) : (
+                <div className="multiverse-featured-event multiverse-featured-empty"><Sparkles className="h-8 w-8" /><span>{phase === 'error' ? 'Event listings are temporarily unavailable.' : 'Your next story is waiting to be published.'}</span><a href="#discover">Browse the radar <ArrowRight className="h-4 w-4" /></a></div>
+              )}
             </div>
 
-            <form onSubmit={submitSearch} className="mt-9 grid max-w-4xl gap-3 rounded-2xl border border-white/10 bg-surface-card/90 p-3 shadow-2xl shadow-black/20 sm:grid-cols-[1fr_220px_auto]">
+            <form onSubmit={submitSearch} className="comic-search-panel multiverse-search-panel mt-9 grid gap-3 border border-white/10 bg-surface-card/90 p-3 shadow-2xl shadow-black/20 sm:grid-cols-[1fr_220px_auto]">
               <label className="flex items-center gap-3 px-3">
                 <Search className="h-5 w-5 shrink-0 text-brand-300" />
                 <span className="sr-only">Search events</span>
@@ -335,22 +365,22 @@ function EventCard({ event, isCustomer, isFavorite, favoriteBusy, onToggleFavori
   const categoryLabel = CATEGORY_LABELS[event.category] || 'Event';
 
   return (
-    <article className="group relative overflow-hidden rounded-2xl border border-surface-border bg-surface-card transition duration-200 hover:-translate-y-1 hover:border-brand-500/40 hover:shadow-xl hover:shadow-brand-950/30">
+    <article className="comic-event-card group relative overflow-hidden border border-surface-border bg-surface-card transition duration-200 hover:border-brand-500/40 hover:shadow-xl hover:shadow-brand-950/30">
       {isCustomer && <button type="button" disabled={favoriteBusy} onClick={() => onToggleFavorite(event)} aria-label={isFavorite ? 'Remove ' + event.title + ' from saved events' : 'Save ' + event.title} aria-pressed={isFavorite} className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/60 text-white backdrop-blur transition hover:border-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:opacity-50"><Heart className={'h-4 w-4 ' + (isFavorite ? 'fill-brand-300 text-brand-300' : '')} /></button>}
       <Link to={'/events/' + event._id} className="block">
-      <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-brand-950 via-surface-elevated to-surface-card">
-        {event.posterUrl ? (
-          <img src={event.posterUrl} alt="" className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" loading="lazy" />
+      <div className="comic-poster relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-brand-950 via-surface-elevated to-surface-card">
+        {event.posterUpload?.url || event.posterUrl ? (
+          <img src={event.posterUpload?.url || event.posterUrl} alt="" className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" loading="lazy" />
         ) : (
           <div className="flex h-full items-end p-5">
             <span className="font-display text-2xl font-bold leading-tight text-white/80">{event.title}</span>
           </div>
         )}
-        <span className="absolute left-3 top-3 rounded-full border border-white/15 bg-black/55 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white backdrop-blur">{categoryLabel}</span>
-        {performance && <span className="absolute bottom-3 right-3 rounded-lg bg-black/65 px-2.5 py-1.5 text-xs font-semibold text-white backdrop-blur">{formatDate(performance.startsAt)}</span>}
+        <span className="multiverse-card-category absolute left-3 top-3 border border-white/15 bg-black/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white backdrop-blur">{categoryLabel}</span>
+        {performance && <span className="multiverse-card-date absolute bottom-0 right-0 px-3 py-2 text-xs font-bold text-black">{formatDate(performance.startsAt)}</span>}
       </div>
       <div className="p-4">
-        <h3 className="line-clamp-2 min-h-12 font-display text-lg font-semibold leading-6 text-white group-hover:text-brand-200">{event.title}</h3>
+        <h3 className="line-clamp-2 min-h-12 font-display text-xl font-semibold leading-6 text-white group-hover:text-brand-200">{event.title}</h3>
         <div className="mt-3 flex items-center gap-1.5 text-xs text-gray-500">
           <MapPin className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate">{performance?.venueAddress?.city || 'Location details coming soon'}</span>

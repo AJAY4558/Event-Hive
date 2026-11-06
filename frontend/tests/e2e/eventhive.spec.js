@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { test, expect, request as playwrightRequest } from '@playwright/test';
 import mongoose from 'mongoose';
 
@@ -6,7 +8,7 @@ const apiUrl = 'http://127.0.0.1:4001';
 const mongoUri = 'mongodb://127.0.0.1:27018/eventhive_test?replicaSet=rs0';
 const password = `EventHive${randomUUID().slice(0, 8)}A1!`;
 const runId = randomUUID().replaceAll('-', '').slice(0, 10);
-const created = { userEmails: [], venueNames: [], eventTitles: [] };
+const created = { userEmails: [], venueNames: [], eventTitles: [], uploadKeys: [] };
 
 // These journeys share the isolated event created by the organizer UI test.
 test.describe.configure({ mode: 'serial' });
@@ -37,8 +39,12 @@ test.afterAll(async () => {
   try {
     await cleanupRunRecords();
   } finally {
-    await api?.dispose();
-    await dbConnection?.close();
+    try {
+      await cleanupUploadedFiles();
+    } finally {
+      await api?.dispose();
+      await dbConnection?.close();
+    }
   }
 });
 
@@ -87,6 +93,36 @@ test('the frontend reaches the isolated API and an organizer creates and publish
   await page.getByLabel('Category').selectOption('concert');
   await page.getByLabel('Description').fill('A live test event used only for isolated EventHive browser verification.');
   await page.getByLabel('Tags (comma separated)').fill('e2e, isolated test');
+  const pngFixture = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c636000020000050001a5f645400000000049454e44ae426082', 'hex');
+  await page.route('https://images.example.test/**', (route) => route.fulfill({ status: 200, contentType: 'image/png', body: pngFixture }));
+  await page.getByLabel('Poster image URL (optional)').fill('https://images.example.test/manual-poster.jpg');
+  await page.getByLabel('Banner image URL (optional)').fill('https://images.example.test/manual-banner.jpg');
+  const posterSection = page.getByRole('region', { name: 'Poster upload' });
+  await page.locator('#event-poster-file').setInputFiles({ name: 'invalid-poster.gif', mimeType: 'image/gif', buffer: pngFixture });
+  await expect(posterSection.getByRole('alert')).toContainText('Choose a JPG, PNG, or WebP image');
+  const posterUploadResponse = page.waitForResponse((response) => isApiResponse(response, '/api/events/uploads', 'POST'));
+  await page.locator('#event-poster-file').setInputFiles({ name: 'event-poster.png', mimeType: 'image/png', buffer: pngFixture });
+  const posterUpload = await posterUploadResponse;
+  expect(posterUpload.status()).toBe(201);
+  const posterImage = (await posterUpload.json()).image;
+  created.uploadKeys.push(posterImage.storageKey);
+  await expect(page.getByAltText('Poster preview')).toBeVisible();
+  await posterSection.getByRole('button', { name: 'Remove upload' }).click();
+  await expect(posterSection.locator('img')).toHaveAttribute('src', 'https://images.example.test/manual-poster.jpg');
+  const replacementUploadResponse = page.waitForResponse((response) => isApiResponse(response, '/api/events/uploads', 'POST'));
+  await page.locator('#event-poster-file').setInputFiles({ name: 'replacement-poster.png', mimeType: 'image/png', buffer: pngFixture });
+  const replacementUpload = await replacementUploadResponse;
+  expect(replacementUpload.status()).toBe(201);
+  const replacementImage = (await replacementUpload.json()).image;
+  created.uploadKeys.push(replacementImage.storageKey);
+  expect(await page.getByLabel('Poster image URL (optional)').inputValue()).toBe('https://images.example.test/manual-poster.jpg');
+  const bannerUploadResponse = page.waitForResponse((response) => isApiResponse(response, '/api/events/uploads', 'POST'));
+  await page.locator('#event-banner-file').setInputFiles({ name: 'event-banner.png', mimeType: 'image/png', buffer: pngFixture });
+  const bannerUpload = await bannerUploadResponse;
+  expect(bannerUpload.status()).toBe(201);
+  const bannerImage = (await bannerUpload.json()).image;
+  created.uploadKeys.push(bannerImage.storageKey);
+  await expect(page.getByAltText('Banner preview')).toBeVisible();
 
   const createEventResponse = page.waitForResponse((response) => isApiResponse(response, '/api/events', 'POST'));
   await page.getByRole('button', { name: 'Save draft and continue' }).click();
@@ -94,6 +130,10 @@ test('the frontend reaches the isolated API and an organizer creates and publish
   expect(eventCreated.status()).toBe(201);
   const eventBody = await eventCreated.json();
   fixture.eventId = eventBody.event._id;
+  expect(eventBody.event.posterUrl).toBe('https://images.example.test/manual-poster.jpg');
+  expect(eventBody.event.bannerUrl).toBe('https://images.example.test/manual-banner.jpg');
+  expect(eventBody.event.posterUpload?.mimeType).toBe('image/png');
+  expect(eventBody.event.bannerUpload?.mimeType).toBe('image/png');
   await expect(page).toHaveURL(new RegExp(`/organizer/events/${fixture.eventId}/edit$`));
   await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible();
   await expect(page.getByText('draft', { exact: true })).toBeVisible();
@@ -134,6 +174,9 @@ test('the frontend reaches the isolated API and an organizer creates and publish
   await page.reload();
   await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible();
   await expect(page.getByText('draft', { exact: true })).toBeVisible();
+  await expect(page.getByAltText('Poster preview')).toBeVisible();
+  await expect(page.getByAltText('Banner preview')).toBeVisible();
+  await expect(page.getByLabel('Poster image URL (optional)')).toHaveValue('https://images.example.test/manual-poster.jpg');
   const publishResponse = page.waitForResponse((response) => (
     isApiResponse(response, `/api/events/${fixture.eventId}/publish`, 'POST')
   ));
@@ -149,6 +192,9 @@ test('the frontend reaches the isolated API and an organizer creates and publish
   const storedEvent = await db.collection('events').findOne({ _id: new mongoose.Types.ObjectId(fixture.eventId) });
   expect(storedEvent?.title).toBe(title);
   expect(storedEvent?.status).toBe('published');
+  expect(storedEvent?.posterUrl).toBe('https://images.example.test/manual-poster.jpg');
+  expect(storedEvent?.posterUpload?.originalName).toBe('replacement-poster.png');
+  expect(storedEvent?.bannerUpload?.originalName).toBe('event-banner.png');
   const configured = await getOrganizerEvent(fixture.eventId, fixture.organizer.token);
   fixture.event = configured;
   fixture.assigned = configured.performances.find((performance) => performance.label === 'Assigned evening');
@@ -173,10 +219,12 @@ test('customers can discover the published event and open its performance detail
   await expect(eventLink).toBeVisible();
   await eventLink.click();
   await expect(page.getByRole('heading', { level: 1, name: fixture.title })).toBeVisible();
+  await expect(page.locator('main img').first()).toHaveAttribute('src', /\/uploads\/organizers\//);
   const assignedCard = page.getByRole('button', { name: /Assigned evening/ });
   const generalCard = page.getByRole('button', { name: /General admission evening/ });
   await expect(assignedCard).toBeVisible();
   await expect(generalCard).toBeVisible();
+  await expect(assignedCard).toContainText('10 E2E Test Road, Suite 2, Test City Test State 400001, India');
   await expect(assignedCard).toContainText(fixture.assignedVenue.name);
   await expect(generalCard).toContainText(fixture.generalVenue.name);
   await expect(assignedCard).toContainText('599');
@@ -316,6 +364,89 @@ test('customer event edits are forbidden and cancellation releases only the owne
   expect((await availability.json()).seats.find((seat) => seat.seatId === seatId).available).toBe(true);
 });
 
+test('registration uses the isolated API and shows duplicate and connectivity errors', async ({ page }) => {
+  const frontendUrl = 'http://127.0.0.1:5174';
+  const email = `eh-e2e-${runId}-registration-${randomUUID().slice(0, 6)}@example.test`;
+  created.userEmails.push(email);
+  expect(await db.collection('users').findOne({ email })).toBeNull();
+
+  await page.goto(`${frontendUrl}/register`);
+  await page.locator('#register-name').fill('E2E Registration');
+  await page.locator('#register-email').fill(email);
+  await page.locator('#register-password').fill('weak');
+  await page.locator('#register-submit').click();
+  await expect(page.getByText('Password must be at least 8 characters')).toBeVisible();
+
+  await page.locator('#register-password').fill(password);
+  await page.locator('#register-name').fill('E');
+  const validationResponsePromise = page.waitForResponse((response) => {
+    return isApiResponse(response, '/api/auth/register', 'POST');
+  });
+  await page.locator('#register-submit').click();
+  const validationResponse = await validationResponsePromise;
+  expect(validationResponse.status()).toBe(422);
+  await expect(page.getByText('Validation failed: Name must be at least 2 characters')).toBeVisible();
+
+  await page.locator('#register-name').fill('E2E Registration');
+  const registerResponsePromise = page.waitForResponse((response) => {
+    return isApiResponse(response, '/api/auth/register', 'POST');
+  });
+  await page.locator('#register-submit').click();
+  const registerResponse = await registerResponsePromise;
+  expect(registerResponse.status()).toBe(201);
+  const registerBody = await registerResponse.json();
+  expect(registerBody.user.email).toBe(email);
+  expect(registerBody.user.role).toBe('customer');
+  expect(registerBody.accessToken).toBeTruthy();
+  await expect(page).toHaveURL(`${frontendUrl}/`);
+
+  const duplicatePage = await page.context().newPage();
+  await duplicatePage.addInitScript(() => localStorage.clear());
+  await duplicatePage.goto(`${frontendUrl}/register`);
+  await duplicatePage.locator('#register-name').fill('E2E Duplicate');
+  await duplicatePage.locator('#register-email').fill(email);
+  await duplicatePage.locator('#register-password').fill(password);
+  const duplicateResponsePromise = duplicatePage.waitForResponse((response) => {
+    return isApiResponse(response, '/api/auth/register', 'POST');
+  });
+  await duplicatePage.locator('#register-submit').click();
+  const duplicateResponse = await duplicateResponsePromise;
+  expect(duplicateResponse.status()).toBe(409);
+  await expect(duplicatePage.getByText('An account with this email already exists.')).toBeVisible();
+
+  const disconnectedPage = await page.context().newPage();
+  await disconnectedPage.addInitScript(() => localStorage.clear());
+  await disconnectedPage.route('**/api/auth/register', (route) => route.abort());
+  await disconnectedPage.goto(`${frontendUrl}/register`);
+  await disconnectedPage.locator('#register-name').fill('E2E Offline');
+  await disconnectedPage.locator('#register-email').fill(`offline-${email}`);
+  await disconnectedPage.locator('#register-password').fill(password);
+  await disconnectedPage.locator('#register-submit').click();
+  await expect(
+    disconnectedPage.getByText('Could not reach the EventHive API. Check that the local backend is running and try again.')
+  ).toBeVisible();
+
+  const serverErrorPage = await page.context().newPage();
+  await serverErrorPage.addInitScript(() => localStorage.clear());
+  await serverErrorPage.route('**/api/auth/register', (route) => route.fulfill({
+    status: 503,
+    contentType: 'text/plain',
+    body: 'Backend unavailable',
+  }));
+  await serverErrorPage.goto(`${frontendUrl}/register`);
+  await serverErrorPage.locator('#register-name').fill('E2E Server Error');
+  await serverErrorPage.locator('#register-email').fill(`server-${email}`);
+  await serverErrorPage.locator('#register-password').fill(password);
+  await serverErrorPage.locator('#register-submit').click();
+  await expect(
+    serverErrorPage.getByText('EventHive API unavailable (HTTP 503). Check the local backend and try again.')
+  ).toBeVisible();
+
+  await duplicatePage.close();
+  await disconnectedPage.close();
+  await serverErrorPage.close();
+});
+
 async function assertIsolatedBackendReady() {
   const response = await fetch(`${apiUrl}/health`);
   if (!response.ok) throw new Error(`Isolated backend health check returned HTTP ${response.status}.`);
@@ -384,6 +515,7 @@ async function createVenueInUI(page, { name, inventoryKind, capacity }) {
   await expect(page.getByRole('heading', { name: 'Add a venue' })).toBeVisible();
   await page.getByLabel('Venue name').fill(name);
   await page.getByLabel('Street address').fill('10 E2E Test Road');
+  await page.getByLabel('Address line 2 (optional)').fill('Suite 2');
   await page.getByLabel('City', { exact: true }).fill('Test City');
   await page.getByLabel('State').fill('Test State');
   await page.getByLabel('Country').fill('India');
@@ -537,6 +669,25 @@ async function cleanupRunRecords() {
     remainingUsers: 0, remainingVenues: 0, remainingEvents: 0,
   });
   console.log(`E2E cleanup removed only this run's records; users=${users.length}, venues=${venues.length}, events=${events.length}.`);
+}
+
+async function cleanupUploadedFiles() {
+  const uploadRoot = path.resolve(import.meta.dirname, '../../../backend/uploads');
+  let removed = 0;
+  for (const storageKey of created.uploadKeys) {
+    if (!/^organizers\/[a-f\d]{24}\/[a-f\d-]{36}\.(jpg|jpeg|png|webp)$/i.test(storageKey)) {
+      throw new Error('Refusing to clean an upload with an unexpected storage key.');
+    }
+    const filePath = path.resolve(uploadRoot, ...storageKey.split('/'));
+    if (!filePath.startsWith(uploadRoot + path.sep)) throw new Error('Refusing to clean an upload outside the test upload directory.');
+    try {
+      await fs.unlink(filePath);
+      removed += 1;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  console.log(`E2E upload cleanup removed ${removed} files created by this run.`);
 }
 
 function assignedPrices() {

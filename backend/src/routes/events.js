@@ -4,6 +4,7 @@ const { Router } = require('express');
 const { authenticate, authorize } = require('../middleware/authenticate');
 const { validate } = require('../middleware/validate');
 const eventController = require('../controllers/eventController');
+const imageUploadController = require('../controllers/imageUploadController');
 const bookingController = require('../controllers/bookingController');
 const {
   eventDetails,
@@ -19,6 +20,7 @@ const { availabilityParams, bookingListQuery } = require('../services/bookings/b
 const eventRouter = Router();
 const organizerAccess = [authenticate, authorize('organizer')];
 
+eventRouter.post('/uploads', ...organizerAccess, imageUploadController.uploadImage);
 eventRouter.get('/', validate(listQuery), eventController.listPublic);
 eventRouter.get('/:eventId/performances/:performanceId/availability', validate(availabilityParams), bookingController.availability);
 eventRouter.get('/organizer', ...organizerAccess, validate(listQuery), eventController.listOrganizer);
