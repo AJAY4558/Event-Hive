@@ -68,7 +68,7 @@ const envSchema = z.object({
   // Uploads
   UPLOAD_DIR: z.string().default('./uploads'),
   MAX_FILE_SIZE_MB: z.coerce.number().int().positive().max(50).default(10),
-  UPLOAD_STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  UPLOAD_STORAGE_DRIVER: z.enum(['atlas', 'local', 's3']).default('atlas'),
   UPLOAD_PUBLIC_BASE_URL: z.string().url().optional(),
   UPLOAD_S3_ENDPOINT: z.string().url().optional(),
   UPLOAD_S3_BUCKET: z.string().trim().min(1).optional(),

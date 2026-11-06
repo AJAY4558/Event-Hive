@@ -673,21 +673,38 @@ async function cleanupRunRecords() {
 
 async function cleanupUploadedFiles() {
   const uploadRoot = path.resolve(import.meta.dirname, '../../../backend/uploads');
-  let removed = 0;
+  const safeKeys = [];
+  let removedLocal = 0;
   for (const storageKey of created.uploadKeys) {
     if (!/^organizers\/[a-f\d]{24}\/[a-f\d-]{36}\.(jpg|jpeg|png|webp)$/i.test(storageKey)) {
       throw new Error('Refusing to clean an upload with an unexpected storage key.');
     }
+    safeKeys.push(storageKey);
+  }
+
+  if (safeKeys.length && db) {
+    const files = await db.collection('eventhive_images.files')
+      .find({ filename: { $in: safeKeys }, 'metadata.storageKey': { $in: safeKeys } })
+      .project({ _id: 1 })
+      .toArray();
+    const fileIds = files.map((file) => file._id);
+    if (fileIds.length) {
+      await db.collection('eventhive_images.chunks').deleteMany({ files_id: { $in: fileIds } });
+      await db.collection('eventhive_images.files').deleteMany({ _id: { $in: fileIds }, filename: { $in: safeKeys } });
+    }
+  }
+
+  for (const storageKey of created.uploadKeys) {
     const filePath = path.resolve(uploadRoot, ...storageKey.split('/'));
     if (!filePath.startsWith(uploadRoot + path.sep)) throw new Error('Refusing to clean an upload outside the test upload directory.');
     try {
       await fs.unlink(filePath);
-      removed += 1;
+      removedLocal += 1;
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
     }
   }
-  console.log(`E2E upload cleanup removed ${removed} files created by this run.`);
+  console.log(`E2E upload cleanup removed test files from Atlas and local storage; local=${removedLocal}, keys=${safeKeys.length}.`);
 }
 
 function assignedPrices() {

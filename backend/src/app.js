@@ -11,6 +11,7 @@ const { env } = require('./config/env');
 const { healthRouter } = require('./routes/health');
 const { authRouter } = require('./routes/auth');
 const { eventRouter } = require('./routes/events');
+const imageUploadController = require('./controllers/imageUploadController');
 const { venueRouter } = require('./routes/venues');
 const { bookingRouter } = require('./routes/bookings');
 const { favoriteRouter } = require('./routes/favorites');
@@ -53,6 +54,7 @@ function createApp() {
   }
 
   // ── Static uploads ──────────────────────────────────────────────────────────
+  app.get('/uploads/organizers/:ownerId/:filename', imageUploadController.serveImage);
   app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR)));
 
   // ── Routes ──────────────────────────────────────────────────────────────────

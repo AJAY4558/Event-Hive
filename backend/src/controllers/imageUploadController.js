@@ -2,7 +2,7 @@
 
 const multer = require('multer');
 const { env } = require('../config/env');
-const { storeImage } = require('../services/imageStorage');
+const { storeImage, findAtlasImage, openAtlasImage } = require('../services/imageStorage');
 
 const MIME_BY_EXTENSION = new Map([
   ['.jpg', 'image/jpeg'],
@@ -57,4 +57,47 @@ function uploadImage(req, res, next) {
   });
 }
 
-module.exports = { uploadImage };
+async function serveImage(req, res, next) {
+  if (env.UPLOAD_STORAGE_DRIVER !== 'atlas') {
+    next();
+    return;
+  }
+
+  const { ownerId, filename } = req.params;
+  if (!/^[a-f\d]{24}$/i.test(ownerId) || !/^[a-f\d-]{36}\.(jpg|jpeg|png|webp)$/i.test(filename)) {
+    res.status(404).end();
+    return;
+  }
+
+  try {
+    const storageKey = `organizers/${ownerId}/${filename}`;
+    const file = await findAtlasImage(storageKey);
+    if (!file || file.metadata?.storageKey !== storageKey || file.metadata?.ownerId !== ownerId) {
+      res.status(404).end();
+      return;
+    }
+
+    const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    if (!allowedTypes.has(file.contentType)) {
+      res.status(404).end();
+      return;
+    }
+
+    res.set({
+      'Content-Type': file.contentType,
+      'Content-Length': String(file.length),
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    const stream = openAtlasImage(file._id);
+    stream.on('error', (error) => {
+      if (res.headersSent) res.destroy(error);
+      else next(error);
+    });
+    stream.pipe(res);
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { uploadImage, serveImage };

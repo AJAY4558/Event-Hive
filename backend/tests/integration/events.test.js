@@ -9,6 +9,7 @@ import { Event } from '../../src/models/Event.js';
 import { Venue } from '../../src/models/Venue.js';
 import { signAccessToken } from '../../src/utils/tokens.js';
 import { env } from '../../src/config/env.js';
+import { deleteAtlasImage } from '../../src/services/imageStorage.js';
 
 describe('Phase 3 — events, venues, and performances', () => {
   let request;
@@ -18,6 +19,7 @@ describe('Phase 3 — events, venues, and performances', () => {
   const otherOwnerToken = signAccessToken({ userId: otherOwnerId, role: 'organizer', email: 'other@eventhive.test' });
   const customerToken = signAccessToken({ userId: new mongoose.Types.ObjectId().toString(), role: 'customer', email: 'customer@eventhive.test' });
   const uploadedStorageKeys = [];
+  const atlasStorageKeys = [];
 
   beforeAll(async () => {
     await connectDb();
@@ -25,6 +27,7 @@ describe('Phase 3 — events, venues, and performances', () => {
   }, 30_000);
 
   afterAll(async () => {
+    await Promise.all(atlasStorageKeys.map((storageKey) => deleteAtlasImage(storageKey)));
     await Promise.all(uploadedStorageKeys.map(async (storageKey) => {
       const filePath = path.resolve(env.UPLOAD_DIR, ...storageKey.split('/'));
       await fs.unlink(filePath).catch((error) => {
@@ -192,7 +195,7 @@ describe('Phase 3 — events, venues, and performances', () => {
     expect(response.status).toBe(403);
   });
 
-  it('stores validated organizer images outside MongoDB and preserves URL fallbacks in event drafts', async () => {
+  it('stores validated organizer images in the isolated test filesystem and preserves URL fallbacks in drafts', async () => {
     const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c636000020000050001a5f645400000000049454e44ae426082', 'hex');
     const unauthenticated = await request.post('/api/events/uploads');
     expect(unauthenticated.status).toBe(401);
@@ -281,5 +284,28 @@ describe('Phase 3 — events, venues, and performances', () => {
     expect(removed.status).toBe(200);
     expect(removed.body.event.posterUpload).toBeNull();
     expect(removed.body.event.posterUrl).toBe(manualPosterUrl);
+  });
+
+  it('stores and serves organizer image bytes through Atlas GridFS when selected', async () => {
+    const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c636000020000050001a5f645400000000049454e44ae426082', 'hex');
+    const previousDriver = env.UPLOAD_STORAGE_DRIVER;
+    env.UPLOAD_STORAGE_DRIVER = 'atlas';
+
+    try {
+      const uploaded = await request.post('/api/events/uploads')
+        .set('Authorization', 'Bearer ' + ownerToken)
+        .attach('image', png, { filename: 'atlas-poster.png', contentType: 'image/png' });
+      expect(uploaded.status).toBe(201);
+      atlasStorageKeys.push(uploaded.body.image.storageKey);
+      expect(uploaded.body.image.url).toMatch(/\/uploads\/organizers\//);
+
+      const imagePath = new URL(uploaded.body.image.url, 'http://localhost').pathname;
+      const served = await request.get(imagePath);
+      expect(served.status).toBe(200);
+      expect(served.headers['content-type']).toMatch(/image\/png/);
+      expect(served.body).toEqual(png);
+    } finally {
+      env.UPLOAD_STORAGE_DRIVER = previousDriver;
+    }
   });
 });

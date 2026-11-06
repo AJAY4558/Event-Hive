@@ -9,6 +9,7 @@ process.env.JWT_EXPIRES_IN = '15m';
 process.env.JWT_REFRESH_EXPIRES_IN = '7d';
 process.env.CORS_ORIGIN = 'http://localhost:5173';
 process.env.UPLOAD_DIR = './uploads';
+process.env.UPLOAD_STORAGE_DRIVER = 'local';
 process.env.MAX_FILE_SIZE_MB = '10';
 process.env.HOLD_EXPIRY_MINUTES = '15';
 process.env.PAYMENT_TIMEOUT_MINUTES = '30';

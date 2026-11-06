@@ -34,7 +34,9 @@ describe('env config', () => {
     expect(isIsolatedTestDatabase(testUri)).toBe(true);
     expect(isIsolatedTestDatabase('mongodb://127.0.0.1:27017/eventhive?replicaSet=rs0')).toBe(false);
     expect(isIsolatedTestDatabase('mongodb://127.0.0.1:27018/eventhive?replicaSet=rs0')).toBe(false);
-    expect(envSchema.safeParse({ ...required, NODE_ENV: 'development', MONGO_URI: atlasUri }).success).toBe(true);
+    const developmentConfig = envSchema.safeParse({ ...required, NODE_ENV: 'development', MONGO_URI: atlasUri });
+    expect(developmentConfig.success).toBe(true);
+    expect(developmentConfig.data.UPLOAD_STORAGE_DRIVER).toBe('atlas');
     expect(envSchema.safeParse({ ...required, NODE_ENV: 'development', MONGO_URI: testUri }).success).toBe(false);
     expect(envSchema.safeParse({ ...required, NODE_ENV: 'test', MONGO_URI: testUri }).success).toBe(true);
     expect(envSchema.safeParse({ ...required, NODE_ENV: 'test', MONGO_URI: atlasUri }).success).toBe(false);
@@ -61,7 +63,7 @@ describe('env config', () => {
     expect(env.PAYMENT_PROVIDER).toBe('sandbox');
   });
 
-  it('uses local image storage by default and keeps the image limit positive', () => {
+  it('uses local image storage in the isolated test environment and keeps the image limit positive', () => {
     expect(env.UPLOAD_STORAGE_DRIVER).toBe('local');
     expect(env.MAX_FILE_SIZE_MB).toBeGreaterThan(0);
   });

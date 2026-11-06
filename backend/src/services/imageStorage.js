@@ -5,6 +5,7 @@ const http = require('node:http');
 const https = require('node:https');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const mongoose = require('mongoose');
 const { URL } = require('node:url');
 const { v4: uuidv4 } = require('uuid');
 const { env } = require('../config/env');
@@ -14,6 +15,7 @@ const EXTENSIONS = {
   'image/png': '.png',
   'image/webp': '.webp',
 };
+const ATLAS_IMAGE_BUCKET = 'eventhive_images';
 
 function makeError(message, status) {
   const error = new Error(message);
@@ -59,6 +61,70 @@ async function storeLocally(file, storageKey) {
   await fs.writeFile(destination, file.buffer, { flag: 'wx', mode: 0o644 });
   const publicBase = env.UPLOAD_PUBLIC_BASE_URL ? new URL(env.UPLOAD_PUBLIC_BASE_URL).origin : '';
   return imageMetadata(file, storageKey, `${publicBase}/uploads/${encodedKey(storageKey)}`);
+}
+
+function atlasImageBucket() {
+  if (!mongoose.connection.db) {
+    throw makeError('Atlas image storage is unavailable.', 503);
+  }
+  return new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: ATLAS_IMAGE_BUCKET });
+}
+
+function publicImageBase() {
+  const configuredBase = env.UPLOAD_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || '';
+  if (!configuredBase) return '';
+  try {
+    const publicUrl = new URL(configuredBase);
+    if (publicUrl.username || publicUrl.password || publicUrl.search || publicUrl.hash) {
+      throw new Error('Invalid public image URL.');
+    }
+    if (env.NODE_ENV === 'production' && publicUrl.protocol !== 'https:') {
+      throw new Error('Production image URLs must use HTTPS.');
+    }
+    return publicUrl.origin;
+  } catch {
+    throw makeError('The public image URL is not correctly configured.', 503);
+  }
+}
+
+async function storeInAtlas(file, storageKey, userId) {
+  const info = imageMetadata(file, storageKey, '');
+  const publicBase = publicImageBase();
+  const bucket = atlasImageBucket();
+  const uploadStream = bucket.openUploadStream(storageKey, {
+    contentType: file.mimetype,
+    metadata: {
+      ownerId: String(userId),
+      storageKey,
+      originalName: info.originalName,
+      size: file.size,
+      uploadedAt: info.uploadedAt,
+    },
+  });
+
+  await new Promise((resolve, reject) => {
+    uploadStream.once('finish', resolve);
+    uploadStream.once('error', reject);
+    uploadStream.end(file.buffer);
+  }).catch(() => {
+    throw makeError('Image could not be stored in MongoDB Atlas. Try again later.', 503);
+  });
+
+  return imageMetadata(file, storageKey, `${publicBase}/uploads/${encodedKey(storageKey)}`);
+}
+
+async function findAtlasImage(storageKey) {
+  return atlasImageBucket().find({ filename: storageKey }).limit(1).next();
+}
+
+function openAtlasImage(fileId) {
+  return atlasImageBucket().openDownloadStream(fileId);
+}
+
+async function deleteAtlasImage(storageKey) {
+  const bucket = atlasImageBucket();
+  const file = await bucket.find({ filename: storageKey }).limit(1).next();
+  if (file) await bucket.delete(file._id);
 }
 
 function hmac(key, value, encoding) {
@@ -152,8 +218,16 @@ async function storeImage(file, userId) {
   }
 
   const storageKey = `organizers/${userId}/${uuidv4()}${extension}`;
+  if (env.UPLOAD_STORAGE_DRIVER === 'atlas') return storeInAtlas(file, storageKey, userId);
   if (env.UPLOAD_STORAGE_DRIVER === 's3') return storeInS3(file, storageKey);
   return storeLocally(file, storageKey);
 }
 
-module.exports = { storeImage, matchesImageSignature };
+module.exports = {
+  storeImage,
+  storeInAtlas,
+  findAtlasImage,
+  openAtlasImage,
+  deleteAtlasImage,
+  matchesImageSignature,
+};
