@@ -8,19 +8,9 @@
 
 ## Prerequisites
 
-### 1. MongoDB Replica Set (REQUIRED before `npm install`)
+### 1. MongoDB Atlas (required for the application)
 
-The project-local configuration uses `127.0.0.1:27018` and the existing `mongo-rs/data` path. It leaves the Windows MongoDB service on `27017` and that service's data directory unchanged.
-
-**In a normal PowerShell window:**
-```powershell
-$mongoBin = "$env:ProgramFiles\MongoDB\Server\8.2\bin\mongod.exe"
-$cfg = (Resolve-Path .\mongo-rs\mongod-rs0.cfg).Path
-Start-Process -FilePath $mongoBin -ArgumentList @('--config', "`"$cfg`"") -WindowStyle Hidden
-.\mongo-rs\init-replica-set.ps1
-```
-
-The initializer only calls `rs.initiate` when the server reports `NotYetInitialized`; otherwise it verifies the existing primary. It does not remove test collections or data.
+Development and production app processes require a MongoDB Atlas `mongodb+srv://` URI so the application uses Atlas consistently. The backend rejects a local MongoDB URI outside test mode. Atlas replica-set support is required for booking transactions.
 
 ### 2. Environment Variables
 
@@ -29,14 +19,7 @@ Copy `.env.example` to `backend/.env` and fill in values:
 Copy-Item .env.example backend\.env
 ```
 
-For MongoDB Atlas, set `MONGO_URI` in the ignored `backend/.env` to an Atlas
-`mongodb+srv://` connection string and include the `eventhive` database in its
-path. Give the database user read/write access and allowlist only the machine's
-current public IP in Atlas Network Access. URL-encode reserved characters in
-the password. The backend verifies replica-set primary status at startup and
-creates its declared indexes; application collections are created as the app
-uses them. Do not point integration tests at this database: they use the
-separate local `eventhive_test` database.
+Replace the Atlas placeholders in the ignored `backend/.env` with your cluster URI and the `eventhive` database path. Give the database user read/write access, allowlist the machine's public IP in Atlas Network Access, and URL-encode reserved characters in the password. The backend verifies replica-set primary status at startup. Do not point integration tests at Atlas: they use the separate local `eventhive_test` database.
 
 ## Installation
 ```bash
@@ -91,7 +74,16 @@ npm run lint:backend
 npm run build:frontend
 ```
 
-The backend integration tests use the isolated `eventhive_test` database configured by `backend/tests/setup.js`. They require an available primary for replica set `rs0`.
+The backend integration tests use the isolated `eventhive_test` database at `127.0.0.1:27018`, configured by `backend/tests/setup.js`; they do not read or write the Atlas database. They require a writable primary for replica set `rs0`. Start the test-only replica set when running integration tests:
+
+```powershell
+$mongoBin = "$env:ProgramFiles\MongoDB\Server\8.2\bin\mongod.exe"
+$cfg = (Resolve-Path .\mongo-rs\mongod-rs0.cfg).Path
+Start-Process -FilePath $mongoBin -ArgumentList @('--config', "`"$cfg`"") -WindowStyle Hidden
+.\mongo-rs\init-replica-set.ps1
+```
+
+The initializer only calls `rs.initiate` when the server reports `NotYetInitialized`; otherwise it verifies the existing primary. It does not remove test collections or data.
 
 ## Phase 3 — Events, venues, and organizer tools
 
@@ -120,6 +112,6 @@ Development and test environments use `UPLOAD_STORAGE_DRIVER=local` with files s
 eventhive/
 ├── backend/          Node.js + Express + JavaScript
 ├── frontend/         React + Vite + JavaScript/JSX + Tailwind
-├── mongo-rs/         Local replica-set config (development alternative)
+├── mongo-rs/         Local replica-set config (isolated tests only)
 └── .env.example      Environment variable template
 ```

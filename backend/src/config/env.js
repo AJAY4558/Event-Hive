@@ -1,6 +1,7 @@
 'use strict';
 
 const { z } = require('zod');
+const { URL } = require('node:url');
 
 function supportsReplicaSet(uri) {
   // Atlas SRV records discover the replica-set members automatically. Keep
@@ -9,6 +10,36 @@ function supportsReplicaSet(uri) {
     /^mongodb\+srv:\/\//i.test(uri) ||
     /(?:\?|&)replicaSet=rs0(?:&|$)/i.test(uri)
   );
+}
+
+function isAtlasUri(uri) {
+  try {
+    const parsed = new URL(uri);
+    return parsed.protocol === 'mongodb+srv:' && parsed.hostname.toLowerCase().endsWith('.mongodb.net');
+  } catch {
+    return false;
+  }
+}
+
+function isIsolatedTestDatabase(uri) {
+  try {
+    const parsed = new URL(uri);
+    return parsed.protocol === 'mongodb:' &&
+      ['127.0.0.1', 'localhost'].includes(parsed.hostname.toLowerCase()) &&
+      parsed.port === '27018' &&
+      parsed.pathname === '/eventhive_test' &&
+      parsed.searchParams.get('replicaSet') === 'rs0';
+  } catch {
+    return false;
+  }
+}
+
+function supportsAppDatabase(uri, nodeEnv) {
+  // App processes use Atlas. Tests may target only the dedicated local test DB,
+  // never Atlas or the local development database.
+  return nodeEnv === 'test'
+    ? supportsReplicaSet(uri) && isIsolatedTestDatabase(uri)
+    : isAtlasUri(uri);
 }
 
 const envSchema = z.object({
@@ -61,6 +92,14 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+}).superRefine((config, context) => {
+  if (!supportsAppDatabase(config.MONGO_URI, config.NODE_ENV)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['MONGO_URI'],
+      message: 'Development and production must use MongoDB Atlas (mongodb+srv://). Local replica sets are reserved for isolated tests.',
+    });
+  }
 });
 
 function loadEnv() {
@@ -79,4 +118,4 @@ function loadEnv() {
 
 const env = loadEnv();
 
-module.exports = { env, supportsReplicaSet };
+module.exports = { env, envSchema, supportsReplicaSet, supportsAppDatabase, isAtlasUri, isIsolatedTestDatabase };
